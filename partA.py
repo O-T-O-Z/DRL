@@ -101,18 +101,18 @@ class Trainer:
 
 
 def main():
-	episodes = 300
+	episodes = 200
 	env = CatchEnv()
 	terminate = False
 	trainer = Trainer(DQN, (env.state_shape(), env.get_num_actions()))
 	perform = []
-	duration = []
+	rewards_all = []
+	rewards_avg = []
 
 	for e in tqdm(range(episodes)):
 
 		state = env.reset()
 		losses = []
-		count = 0
 
 		while True:
 	
@@ -124,27 +124,27 @@ def main():
 			state = next_state
 
 			loss = trainer.train()
+
 			if loss:
 				losses.append(loss)
 			if terminate:
 				perform.append(np.mean(losses))
+				rewards_all.append(reward)
+				rewards_avg.append(np.mean(rewards_all))
 				break
-
-			count += 1
-		duration.append(count)
 
 		if e % 10 == 0:
 			trainer.transfer_knowledge()
 
 	print(perform)
-	print(duration)
+	print(rewards_all)
 	plt.plot(perform)
 	plt.xlabel("episode")
 	plt.ylabel("loss")
 	plt.show()
-	plt.plot(duration)
+	plt.plot(rewards_avg)
 	plt.xlabel("episode")
-	plt.ylabel("Duration of game")
+	plt.ylabel("Average Reward")
 	plt.show()
 
 

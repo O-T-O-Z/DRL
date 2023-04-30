@@ -68,14 +68,12 @@ def run_environment():
 	for ep in range(number_of_episodes):
 		env.reset()
 		state, reward, terminal = env.step(random.randint(0, 2))
-		count = 0 
 		while not terminal:
 			state, reward, terminal = env.step(random.randint(0, 2))
 			print("Reward obtained by the agent: {}".format(reward))
 			state = np.squeeze(state)
-			count += 1
 			print("End of the episode")
-		print(count)
+		print(reward)
 
 
 if __name__ == "__main__":
