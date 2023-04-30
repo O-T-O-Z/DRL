@@ -1,24 +1,21 @@
 import torch
 from torch import nn
 from torchsummary import torchsummary
-
 from catch import CatchEnv
 import random
 import torch.optim as optim
 import torch.nn.functional as F
 import numpy as np
+import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 
 # Adapted from https://pytorch.org/tutorials/intermediate/reinforcement_q_learning.html
 
-# def sample(self):
-# 	return random.sample(self.memory, self.batch_size)
-
 
 class DQN(nn.Module):
-	def __init__(self, n_observations, n_actions, epsilon=0.1):
+	def __init__(self, n_observations, n_actions):
 		super(DQN, self).__init__()
-		self.epsilon = epsilon
 		self.layers = nn.Sequential(
 			nn.Conv2d(4, 16, kernel_size=3),
 			nn.ReLU(),
@@ -37,52 +34,108 @@ class DQN(nn.Module):
 		# print(torchsummary.summary(self.layers, (4,84,84)))
 
 	def forward(self, x):
-		return F.softmax(self.layers(x), dim=1).argmax().item()
+		return F.softmax(self.layers(x), dim=1)
+		
+
+class Trainer:
+
+	def __init__(self, net_type, net_params, batch_size=32, epsilon=0.1, gamma=0.9, lr=0.01):
+		self.batch_size = batch_size
+		self.epsilon = epsilon
+		self.gamma = gamma
+		self.lr = lr
+
+		self.target_net = net_type(*net_params)
+		self.policy_net = net_type(*net_params)
+		self.transfer_knowledge()
+		
+		self.optimizer = optim.RMSprop(self.policy_net.parameters(), lr=self.lr)
+		self.criterion = nn.MSELoss()
+
+		self.memory = []
 
 	def make_action(self, state):
 		if random.random() > self.epsilon:
-			# network selection
 			state = state.reshape(1, 4, 84, 84)
-			return self.forward(torch.Tensor(state))
+			output = self.policy_net.forward(torch.Tensor(state))
+			return output.argmax().item()
 		else:
 			return random.randint(0, 2)
+		
+	def save_trajectory(self, t):
+		self.memory.append(t)
+
+	def train(self):
+		if len(self.memory) < self.batch_size:
+			return # no training possible
+		
+		train_data = random.sample(self.memory, self.batch_size)
+		train_data_unzip = list(zip(*train_data))
+
+		states = np.array(train_data_unzip[0])
+		actions = np.array(train_data_unzip[1])
+		next_states = np.array(train_data_unzip[2])
+		rewards = np.array(train_data_unzip[3])
+
+		# Q(s, a)
+		states = torch.Tensor(states).reshape(len(states), 4, 84, 84)
+		model_output = self.policy_net.forward(states)
+		state_action_values = model_output[np.arange(self.batch_size), actions]
+
+		# max(Q(s+1, a))
+		next_states = torch.Tensor(next_states).reshape(len(next_states), 4, 84, 84)
+		model_output = self.target_net.forward(next_states)
+		max_state_action_values = model_output.max(1)[0].detach().numpy()
+		td_target = torch.Tensor(rewards + (self.gamma * max_state_action_values))
+		
+		loss = self.criterion(state_action_values, td_target)
+		
+		self.optimizer.zero_grad()
+		loss.backward()
+		self.optimizer.step()
+
+		return loss.item()
+		
+	def transfer_knowledge(self):
+		self.target_net.load_state_dict(self.policy_net.state_dict())
 
 
 def main():
-	episodes = 100
-	batch_size = 32
-	memory = []
+	episodes = 200
 	env = CatchEnv()
 	terminate = False
+	trainer = Trainer(DQN, (env.state_shape(), env.get_num_actions()))
+	perform = []	
 
-	target_net = DQN(env.state_shape(), env.get_num_actions())
-	policy_net = DQN(env.state_shape(), env.get_num_actions())
-	target_net.load_state_dict(policy_net.state_dict())
+	for e in tqdm(range(episodes)):
 
-	optimizer = optim.RMSprop(policy_net.parameters())
-	criterion = nn.MSELoss()
-
-	for e in range(episodes):
-		# Initialize the environment and state
 		state = env.reset()
-		for t in range(100):
-			# Select and perform an action
-			action = policy_net.make_action(state)
+		losses = []
+
+		while True:
+	
+			action = trainer.make_action(state)
 			next_state, reward, terminate = env.step(action)
 
-			# Store the transition in memory
-			memory.append((state, action, next_state, reward))
+			trainer.save_trajectory((state, action, next_state, reward))
 
-			# Move to the next state
 			state = next_state
 
-			# Perform one step of the optimization (on the target network)
-			#loss = optimize_model()
+			loss = trainer.train()
+			if loss:
+				losses.append(loss)
 			if terminate:
+				perform.append(np.mean(losses))
 				break
-		# Update the target network, copying all weights and biases in DQN
+
 		if e % 10 == 0:
-			target_net.load_state_dict(policy_net.state_dict())
+			trainer.transfer_knowledge()
+
+	print(perform)
+	plt.plot(perform)
+	plt.xlabel("episode")
+	plt.ylabel("loss")
+	plt.show()
 
 
 if __name__ == '__main__':
