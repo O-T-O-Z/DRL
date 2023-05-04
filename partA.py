@@ -61,7 +61,7 @@ class Trainer:
 	def make_action(self, state):
 		if random.random() > self.epsilon:
 			state = state.reshape(1, 4, 84, 84)
-			output = self.policy_net.forward(torch.Tensor(state)).to(self.device)
+			output = self.policy_net.forward(torch.Tensor(state).to(self.device))
 			return output.argmax().item()
 		else:
 			return random.randint(0, 2)
