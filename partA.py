@@ -8,6 +8,7 @@ import torch.nn.functional as F
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+from collections import deque
 
 
 # Adapted from https://pytorch.org/tutorials/intermediate/reinforcement_q_learning.html
@@ -17,21 +18,22 @@ class DQN(nn.Module):
 	def __init__(self, n_observations, n_actions):
 		super(DQN, self).__init__()
 		self.layers = nn.Sequential(
-			nn.Conv2d(4, 16, kernel_size=3),
+			nn.Conv2d(4, 16, kernel_size=8, stride=4),
 			nn.ReLU(),
-			nn.AvgPool2d(kernel_size=3, stride=3),
-			nn.Conv2d(16, 32, kernel_size=3),
+			#nn.AvgPool2d(kernel_size=3, stride=3),
+			nn.Conv2d(16, 32, kernel_size=4, stride=2),
 			nn.ReLU(),
-			nn.AvgPool2d(kernel_size=3, stride=3),
-			nn.Conv2d(32, 64, kernel_size=3),
+			#nn.AvgPool2d(kernel_size=3, stride=3),
+			#nn.Conv2d(64, 64, kernel_size=3, stride=1),
 			nn.ReLU(),
-			nn.AvgPool2d(kernel_size=3, stride=3),
+			#nn.AvgPool2d(kernel_size=3, stride=3),
 			nn.Flatten(),
-			nn.Linear(256, 128),
+			nn.Linear(2592, 256),
 			nn.ReLU(),
-			nn.Linear(128, n_actions),
+			nn.Linear(256, n_actions),
 		)
-		# print(torchsummary.summary(self.layers, (4,84,84)))
+		print(torchsummary.summary(self.layers, (4,84,84)))
+		#exit()
 
 	def forward(self, x):
 		return F.softmax(self.layers(x), dim=1)
@@ -39,7 +41,7 @@ class DQN(nn.Module):
 
 class Trainer:
 
-	def __init__(self, net_type, net_params, batch_size=32, epsilon=0.1, gamma=0.9, lr=0.01):
+	def __init__(self, net_type, net_params, batch_size=16, epsilon=0.1, gamma=0.9, lr=0.01):
 		self.batch_size = batch_size
 		self.epsilon = epsilon
 		self.gamma = gamma
@@ -49,10 +51,10 @@ class Trainer:
 		self.policy_net = net_type(*net_params)
 		self.transfer_knowledge()
 		
-		self.optimizer = optim.RMSprop(self.policy_net.parameters(), lr=self.lr)
+		self.optimizer = optim.AdamW(self.policy_net.parameters(), lr=1e-4)
 		self.criterion = nn.MSELoss()
 
-		self.memory = []
+		self.memory = deque([], 2000)
 
 	def make_action(self, state):
 		if random.random() > self.epsilon:
@@ -101,7 +103,7 @@ class Trainer:
 
 
 def main():
-	episodes = 200
+	episodes = 1000
 	env = CatchEnv()
 	terminate = False
 	trainer = Trainer(DQN, (env.state_shape(), env.get_num_actions()))
@@ -124,16 +126,20 @@ def main():
 			state = next_state
 
 			loss = trainer.train()
+			# print(loss)
+			# print(len(trainer.memory))
 
 			if loss:
 				losses.append(loss)
 			if terminate:
 				perform.append(np.mean(losses))
 				rewards_all.append(reward)
-				rewards_avg.append(np.mean(rewards_all))
+				mean = np.mean(rewards_all)
+				rewards_avg.append(mean)
+				print(mean)
 				break
 
-		if e % 10 == 0:
+		if e % 100 == 0:
 			trainer.transfer_knowledge()
 
 	print(perform)
