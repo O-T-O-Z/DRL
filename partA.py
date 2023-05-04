@@ -49,8 +49,8 @@ class Trainer:
 		self.lr = lr
 		self.device = device
 
-		self.target_net = net_type(*net_params)
-		self.policy_net = net_type(*net_params)
+		self.target_net = net_type(*net_params).to(self.device)
+		self.policy_net = net_type(*net_params).to(self.device)
 		self.transfer_knowledge()
 
 		self.optimizer = optim.AdamW(self.policy_net.parameters(), lr=1e-4)
