@@ -111,8 +111,7 @@ class Trainer:
 
 
 def main():
-	# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-	device = torch.device("mps")
+	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 	episodes = 10000
 	env = CatchEnv()
 	terminate = False
