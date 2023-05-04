@@ -89,8 +89,8 @@ class Trainer:
 		# max(Q(s+1, a))
 		next_states = torch.Tensor(next_states).reshape(len(next_states), 4, 84, 84).to(self.device)
 		model_output = self.target_net.forward(next_states)
-		max_state_action_values = model_output.max(1)[0].detach().numpy()
-		td_target = torch.Tensor(rewards + (self.gamma * max_state_action_values))
+		max_state_action_values = model_output.max(1)[0].detach().cpu().numpy()
+		td_target = torch.Tensor(rewards + (self.gamma * max_state_action_values)).to(self.device)
 
 		loss = self.criterion(state_action_values, td_target)
 
