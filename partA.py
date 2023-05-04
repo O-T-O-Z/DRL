@@ -143,7 +143,7 @@ def main():
 			if terminate:
 				perform.append(np.mean(losses))
 				rewards_all.append(reward)
-				if len(rewards_all) < 100:
+				if len(rewards_all) > 100:
 					mean = np.mean(rewards_all[:-100])
 					print(mean)
 				break
