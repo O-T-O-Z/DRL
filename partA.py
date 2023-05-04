@@ -32,7 +32,8 @@ class DQN(nn.Module):
 			nn.ReLU(),
 			nn.Linear(256, n_actions),
 		)
-		# print(torchsummary.summary(self.layers, (4, 84, 84)))
+
+	# print(torchsummary.summary(self.layers, (4, 84, 84)))
 
 	# exit()
 
@@ -42,7 +43,7 @@ class DQN(nn.Module):
 
 class Trainer:
 
-	def __init__(self, net_type, net_params, device, batch_size=32, epsilon=0.1, gamma=0.9, lr=0.01):
+	def __init__(self, net_type, net_params, device, batch_size=32, epsilon=1.0009, gamma=0.99, lr=0.01):
 		self.batch_size = batch_size
 		self.epsilon = epsilon
 		self.gamma = gamma
@@ -54,11 +55,13 @@ class Trainer:
 		self.transfer_knowledge()
 
 		self.optimizer = optim.AdamW(self.policy_net.parameters(), lr=1e-4)
-		self.criterion = nn.MSELoss()
+		self.criterion = nn.SmoothL1Loss()
 
 		self.memory = deque([], 2000)
 
 	def make_action(self, state):
+		if self.epsilon > 0.1:
+			self.epsilon -= 0.0009
 		if random.random() > self.epsilon:
 			state = state.reshape(1, 4, 84, 84)
 			output = self.policy_net.forward(torch.Tensor(state).to(self.device))
@@ -69,7 +72,7 @@ class Trainer:
 	def save_trajectory(self, t):
 		self.memory.append(t)
 
-	def train(self):
+	def train(self, terminal=False):
 		if len(self.memory) < self.batch_size:
 			return  # no training possible
 
@@ -87,10 +90,13 @@ class Trainer:
 		state_action_values = model_output[np.arange(self.batch_size), actions]
 
 		# max(Q(s+1, a))
-		next_states = torch.Tensor(next_states).reshape(len(next_states), 4, 84, 84).to(self.device)
-		model_output = self.target_net.forward(next_states)
-		max_state_action_values = model_output.max(1)[0].detach().cpu().numpy()
-		td_target = torch.Tensor(rewards + (self.gamma * max_state_action_values)).to(self.device)
+		if not terminal:
+			next_states = torch.Tensor(next_states).reshape(len(next_states), 4, 84, 84).to(self.device)
+			model_output = self.target_net.forward(next_states)
+			max_state_action_values = model_output.max(1)[0].detach().cpu().numpy()
+			td_target = torch.Tensor(rewards + (self.gamma * max_state_action_values)).to(self.device)
+		else:
+			td_target = torch.Tensor(rewards).to(self.device)
 
 		loss = self.criterion(state_action_values, td_target)
 
@@ -105,7 +111,8 @@ class Trainer:
 
 
 def main():
-	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+	# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+	device = torch.device("mps")
 	episodes = 10000
 	env = CatchEnv()
 	terminate = False
