@@ -64,16 +64,20 @@ class CatchEnv():
 
 def run_environment():
 	env = CatchEnv()
-	number_of_episodes = 1
+	number_of_episodes = 10000
+	rewards_all = []
 	for ep in range(number_of_episodes):
 		env.reset()
 		state, reward, terminal = env.step(random.randint(0, 2))
 		while not terminal:
 			state, reward, terminal = env.step(random.randint(0, 2))
-			print("Reward obtained by the agent: {}".format(reward))
+			#print("Reward obtained by the agent: {}".format(reward))
 			state = np.squeeze(state)
-			print("End of the episode")
-		print(reward)
+			#print("End of the episode")
+		rewards_all.append(reward)
+		if len(rewards_all) > 100:
+			mean = np.mean(rewards_all[:-100])
+			print(mean)
 
 
 if __name__ == "__main__":

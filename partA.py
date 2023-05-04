@@ -60,9 +60,9 @@ class Trainer:
 		self.memory = deque([], 2000)
 
 	def make_action(self, state):
-		if self.epsilon > 0.1:
-			self.epsilon -= 0.0009
-		if random.random() > self.epsilon:
+		# if self.epsilon > 0.1:
+		# 	self.epsilon -= 0.0009
+		if random.random() > 0.1: #self.epsilon:
 			state = state.reshape(1, 4, 84, 84)
 			output = self.policy_net.forward(torch.Tensor(state).to(self.device))
 			return output.argmax().item()
@@ -72,7 +72,7 @@ class Trainer:
 	def save_trajectory(self, t):
 		self.memory.append(t)
 
-	def train(self, terminal=False):
+	def train(self):
 		if len(self.memory) < self.batch_size:
 			return  # no training possible
 
@@ -83,6 +83,7 @@ class Trainer:
 		actions = np.array(train_data_unzip[1])
 		next_states = np.array(train_data_unzip[2])
 		rewards = np.array(train_data_unzip[3])
+		terminals = np.array(train_data_unzip[4])
 
 		# Q(s, a)
 		states = torch.Tensor(states).reshape(len(states), 4, 84, 84).to(self.device)
@@ -90,15 +91,21 @@ class Trainer:
 		state_action_values = model_output[np.arange(self.batch_size), actions]
 
 		# max(Q(s+1, a))
-		if not terminal:
-			next_states = torch.Tensor(next_states).reshape(len(next_states), 4, 84, 84).to(self.device)
-			model_output = self.target_net.forward(next_states)
-			max_state_action_values = model_output.max(1)[0].detach().cpu().numpy()
-			td_target = torch.Tensor(rewards + (self.gamma * max_state_action_values)).to(self.device)
-		else:
-			td_target = torch.Tensor(rewards).to(self.device)
+		#if not terminal:
+		next_states = torch.Tensor(next_states).reshape(len(next_states), 4, 84, 84).to(self.device)
+		model_output = self.target_net.forward(next_states)
+		max_state_action_values = model_output.max(1)[0].detach().cpu().numpy()
+
+		max_state_action_values[terminals] = 0
+		# print(terminals)
+		# exit()
+		td_target = torch.Tensor(rewards + (self.gamma * max_state_action_values)).to(self.device)
+		#else:
+		# wrong only if the episode
+		#td_target = torch.Tensor(rewards).to(self.device)
 
 		loss = self.criterion(state_action_values, td_target)
+		#clipping
 
 		self.optimizer.zero_grad()
 		loss.backward()
@@ -112,7 +119,7 @@ class Trainer:
 
 def main():
 	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-	episodes = 10000
+	episodes = 1000
 	env = CatchEnv()
 	terminate = False
 	trainer = Trainer(DQN, (env.state_shape(), env.get_num_actions()), device)
@@ -130,7 +137,7 @@ def main():
 			action = trainer.make_action(state)
 			next_state, reward, terminate = env.step(action)
 
-			trainer.save_trajectory((state, action, next_state, reward))
+			trainer.save_trajectory((state, action, next_state, reward, terminate))
 
 			state = next_state
 
@@ -143,12 +150,12 @@ def main():
 			if terminate:
 				perform.append(np.mean(losses))
 				rewards_all.append(reward)
-				if len(rewards_all) < 100:
-					mean = np.mean(rewards_all[:-100])
+				if len(rewards_all) > 100:
+					mean = np.mean(rewards_all[-100:])
 					print(mean)
 				break
 
-		if e % 100 == 0:
+		if e % 300 == 0:
 			trainer.transfer_knowledge()
 
 	print(perform)
