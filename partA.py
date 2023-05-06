@@ -18,19 +18,19 @@ class DQN(nn.Module):
 	def __init__(self, n_observations, n_actions):
 		super(DQN, self).__init__()
 		self.layers = nn.Sequential(
-			nn.Conv2d(4, 16, kernel_size=8, stride=4),
+			nn.Conv2d(4, 32, kernel_size=8, stride=4),
 			nn.ReLU(),
 			# nn.AvgPool2d(kernel_size=3, stride=3),
-			nn.Conv2d(16, 32, kernel_size=4, stride=2),
+			nn.Conv2d(32, 64, kernel_size=4, stride=2),
 			nn.ReLU(),
 			# nn.AvgPool2d(kernel_size=3, stride=3),
-			# nn.Conv2d(64, 64, kernel_size=3, stride=1),
+			nn.Conv2d(64, 64, kernel_size=3, stride=1),
 			nn.ReLU(),
 			# nn.AvgPool2d(kernel_size=3, stride=3),
 			nn.Flatten(),
-			nn.Linear(2592, 256),
+			nn.Linear(3136, 512),
 			nn.ReLU(),
-			nn.Linear(256, n_actions),
+			nn.Linear(512, n_actions),
 		)
 
 	# print(torchsummary.summary(self.layers, (4, 84, 84)))
@@ -60,9 +60,9 @@ class Trainer:
 		self.memory = deque([], 2000)
 
 	def make_action(self, state):
-		# if self.epsilon > 0.1:
-		# 	self.epsilon -= 0.0009
-		if random.random() > 0.1: #self.epsilon:
+		if self.epsilon > 0.1:
+			self.epsilon -= 0.0009
+		if random.random() > self.epsilon:
 			state = state.reshape(1, 4, 84, 84)
 			output = self.policy_net.forward(torch.Tensor(state).to(self.device))
 			return output.argmax().item()
