@@ -20,22 +20,15 @@ class DQN(nn.Module):
 		self.layers = nn.Sequential(
 			nn.Conv2d(4, 32, kernel_size=8, stride=4),
 			nn.ReLU(),
-			# nn.AvgPool2d(kernel_size=3, stride=3),
 			nn.Conv2d(32, 64, kernel_size=4, stride=2),
 			nn.ReLU(),
-			# nn.AvgPool2d(kernel_size=3, stride=3),
 			nn.Conv2d(64, 64, kernel_size=3, stride=1),
 			nn.ReLU(),
-			# nn.AvgPool2d(kernel_size=3, stride=3),
 			nn.Flatten(),
 			nn.Linear(3136, 512),
 			nn.ReLU(),
 			nn.Linear(512, n_actions),
 		)
-
-	# print(torchsummary.summary(self.layers, (4, 84, 84)))
-
-	# exit()
 
 	def forward(self, x):
 		return F.softmax(self.layers(x), dim=1)
@@ -43,7 +36,7 @@ class DQN(nn.Module):
 
 class Trainer:
 
-	def __init__(self, net_type, net_params, device, batch_size=32, epsilon=1.0009, gamma=0.99, lr=0.01):
+	def __init__(self, net_type, net_params, device, batch_size=32, epsilon=1.0, gamma=0.99, lr=0.01):
 		self.batch_size = batch_size
 		self.epsilon = epsilon
 		self.gamma = gamma
@@ -54,14 +47,14 @@ class Trainer:
 		self.policy_net = net_type(*net_params).to(self.device)
 		self.transfer_knowledge()
 
-		self.optimizer = optim.AdamW(self.policy_net.parameters(), lr=1e-4)
+		self.optimizer = optim.RMSprop(self.policy_net.parameters(), lr=2e-4)
 		self.criterion = nn.SmoothL1Loss()
 
 		self.memory = deque([], 2000)
 
 	def make_action(self, state):
-		if self.epsilon > 0.1:
-			self.epsilon -= 0.0009
+		if self.epsilon > 0.01:
+			self.epsilon -= 0.00009
 		if random.random() > self.epsilon:
 			state = state.reshape(1, 4, 84, 84)
 			output = self.policy_net.forward(torch.Tensor(state).to(self.device))
@@ -78,37 +71,29 @@ class Trainer:
 
 		train_data = random.sample(self.memory, self.batch_size)
 		train_data_unzip = list(zip(*train_data))
-
-		states = np.array(train_data_unzip[0])
-		actions = np.array(train_data_unzip[1])
-		next_states = np.array(train_data_unzip[2])
-		rewards = np.array(train_data_unzip[3])
-		terminals = np.array(train_data_unzip[4])
+		train_data_unzip = [np.array(x) for x in train_data_unzip]
+		states, actions, next_states, rewards, terminals = train_data_unzip
 
 		# Q(s, a)
 		states = torch.Tensor(states).reshape(len(states), 4, 84, 84).to(self.device)
-		model_output = self.policy_net.forward(states)
+		model_output = self.policy_net(states)
 		state_action_values = model_output[np.arange(self.batch_size), actions]
 
 		# max(Q(s+1, a))
 		#if not terminal:
-		next_states = torch.Tensor(next_states).reshape(len(next_states), 4, 84, 84).to(self.device)
-		model_output = self.target_net.forward(next_states)
-		max_state_action_values = model_output.max(1)[0].detach().cpu().numpy()
+		with torch.no_grad():
+			next_states = torch.Tensor(next_states).reshape(len(next_states), 4, 84, 84).to(self.device)
+			model_output = self.target_net(next_states)
+			max_state_action_values = model_output.max(1)[0].detach().cpu().numpy()
 
 		max_state_action_values[terminals] = 0
-		# print(terminals)
-		# exit()
 		td_target = torch.Tensor(rewards + (self.gamma * max_state_action_values)).to(self.device)
-		#else:
-		# wrong only if the episode
-		#td_target = torch.Tensor(rewards).to(self.device)
-
-		loss = self.criterion(state_action_values, td_target)
+		loss = self.criterion(state_action_values.unsqueeze(1), td_target.unsqueeze(1))
 		#clipping
 
 		self.optimizer.zero_grad()
 		loss.backward()
+		# torch.nn.utils.clip_grad_value_(self.policy_net.parameters(), 100)
 		self.optimizer.step()
 
 		return loss.item()
@@ -119,7 +104,7 @@ class Trainer:
 
 def main():
 	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-	episodes = 1000
+	episodes = 10000
 	env = CatchEnv()
 	terminate = False
 	trainer = Trainer(DQN, (env.state_shape(), env.get_num_actions()), device)
@@ -142,7 +127,6 @@ def main():
 			state = next_state
 
 			loss = trainer.train()
-			# print(loss)
 			# print(len(trainer.memory))
 
 			if loss:
@@ -153,6 +137,7 @@ def main():
 				if len(rewards_all) > 100:
 					mean = np.mean(rewards_all[-100:])
 					print(mean)
+					print(np.mean(losses[-100:]))
 				break
 
 		if e % 300 == 0:
