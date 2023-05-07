@@ -145,7 +145,7 @@ class Trainer:
 
         terminals = torch.Tensor(terminals).to(self.device)
         rewards = torch.Tensor(rewards).to(self.device)
-        max_state_action_values[np.argwhere(terminals == 1)] = 0.0
+        max_state_action_values[np.argwhere(terminals.cpu() == 1)] = 0.0
         td_target = rewards + (self.gamma * max_state_action_values)
 
         loss = self.criterion(state_action_values, td_target)
