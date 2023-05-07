@@ -6,8 +6,9 @@ from torchsummary import summary
 
 import random
 import numpy as np
-import matplotlib.pyplot as plt
-from tqdm import tqdm
+import time
+import sys
+import signal
 
 from catch import CatchEnv
 
@@ -32,10 +33,12 @@ class DQN(nn.Module):
             nn.ReLU(),
             nn.Linear(512, 3),
         )
-        print(summary(self.layers, (4, 84, 84)))
 
     def forward(self, x):
         return self.layers(x) # don't use softmax here :)
+    
+    def __str__(self):
+        return str(summary(self.layers, (4, 84, 84)))
 
 
 # Adapted from https://github.com/philtabor/Deep-Q-Learning-Paper-To-Code/blob/master/DQN/replay_memory.py
@@ -82,29 +85,40 @@ class Trainer:
                  gamma=0.99, 
                  lr=1e-4, 
                  buffer_size=60000,
-                 criterion=nn.SmoothL1Loss()
+                 criterion=nn.SmoothL1Loss(),
+                 n_step_transfer = 1000
                  ):
         self.batch_size = batch_size
         self.epsilon = 1.0
         self.gamma = gamma
         self.lr = lr
         self.criterion = criterion
+        self.n_step_transfer = n_step_transfer
+        self.steps = 0
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         self.target_net = DQN().to(self.device)
         self.policy_net = DQN().to(self.device)
+        print(self.policy_net)
         self.transfer_knowledge()
 
         self.optimizer = optim.AdamW(self.policy_net.parameters(), lr=lr)
         
         self.buffer = Buffer(buffer_size, batch_size)
 
-    def make_action(self, state):
+    def use_policy(self, state):
+        state_input = torch.Tensor(np.array([state])).to(self.device)
+        output = self.policy_net.forward(state_input)
+        return output.argmax().item()
+    
+    def make_action(self, state, use_own_policy=False):
+        if use_own_policy:
+            return self.use_policy(state)
+
         if self.epsilon > 0.1:
             self.epsilon -= 1e-4
         if random.random() > self.epsilon:
-            output = self.policy_net.forward(torch.Tensor(np.array([state])).to(self.device))
-            return output.argmax().item()
+            return self.use_policy(state)
         else:
             return random.randint(0, 2)
 
@@ -112,6 +126,8 @@ class Trainer:
         self.buffer.save_trajectory(*t)
 
     def train(self):
+        self.steps += 1
+
         if not self.buffer.sample_possible():
             return  # no training possible
 
@@ -127,15 +143,19 @@ class Trainer:
         model_output = self.target_net(next_states)
         max_state_action_values = model_output.max(dim=1)[0]
 
-        max_state_action_values[np.argwhere(torch.Tensor(terminals) == 1)] = 0.0
+        terminals = torch.Tensor(terminals).to(self.device)
         rewards = torch.Tensor(rewards).to(self.device)
+        max_state_action_values[np.argwhere(terminals == 1)] = 0.0
         td_target = rewards + (self.gamma * max_state_action_values)
-        loss = self.criterion(state_action_values, td_target)
 
+        loss = self.criterion(state_action_values, td_target)
         self.optimizer.zero_grad()
         loss.backward()
         # torch.nn.utils.clip_grad_value_(self.policy_net.parameters(), 100)
         self.optimizer.step()
+
+        if self.steps % self.n_step_transfer == 0:
+            self.transfer_knowledge()
 
         return loss.item()
 
@@ -143,56 +163,64 @@ class Trainer:
         self.target_net.load_state_dict(self.policy_net.state_dict())
 
 
+AVG_TESTING_REWARDS = []
+
+def save_data():
+    np.save("group_06_catch_rewards_" + str(time.time()), np.array(AVG_TESTING_REWARDS))
+
+def manual_early_stopping(sig, frame):
+    print("Program stopped early")
+    save_data()
+    print("Validation data saved!")
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, manual_early_stopping)
+
 def main():
 
-    episodes = 30000
-    env = CatchEnv()
-    terminate = False
-    trainer = Trainer()
-    perform = []
-    rewards_all = []
-    steps = 0
+    training_episodes = 3000
+    assert training_episodes % 10 == 0
+    episodes = training_episodes * 2
 
-    for e in tqdm(range(episodes)):
+    env = CatchEnv()
+    trainer = Trainer()
+    validation = False
+    testing_rewards = []
+    mean_reward = None
+
+    for e in range(episodes):
 
         state = env.reset()
         state = state.reshape(4, 84, 84)
-        losses = []
 
         while True:
-            steps += 1
-            action = trainer.make_action(state)
+
+            action = trainer.make_action(state, use_own_policy=validation)
             next_state, reward, terminate = env.step(action)
             next_state = next_state.reshape(4, 84, 84)
 
-            trainer.save_trajectory((state, action, next_state, reward, terminate))
+            if not validation:
+                trainer.save_trajectory((state, action, next_state, reward, terminate))
+                loss = trainer.train()
 
             state = next_state
 
-            loss = trainer.train()
-
-            if steps % 1000 == 0:
-                trainer.transfer_knowledge()
-
-            if loss:
-                losses.append(loss)
             if terminate:
-                perform.append(np.mean(losses))
-                rewards_all.append(reward)
-                mean = np.mean(rewards_all[-100:])
-                print(mean)
+                if validation:
+                    testing_rewards.append(reward)
                 break
 
-    print(perform)
-    print(rewards_all)
-    # plt.plot(perform)
-    # plt.xlabel("episode")
-    # plt.ylabel("loss")
-    # plt.show()
-    # plt.plot(rewards_avg)
-    # plt.xlabel("episode")
-    # plt.ylabel("Average Reward")
-    # plt.show()
+        if e % 10 == 0:
+            if validation:
+                mean_reward = np.mean(testing_rewards)
+                AVG_TESTING_REWARDS.append(mean_reward)
+                testing_rewards = []
+            validation = not validation
+            print("--------------------------------")
+
+        print("Episode:", e, ("Validation Reward: " + str(mean_reward) if not validation else ""))
+
+    save_data()
 
 
 if __name__ == '__main__':
