@@ -1,3 +1,9 @@
+################################################################################
+#
+# Part A: catch game using value-based (DQN) approach 
+# Ömer Tarik Özyilmaz (s3951731) and Nikolai Herrmann (s3975207)
+#
+################################################################################
 
 import torch
 import torch.optim as optim
@@ -12,19 +18,35 @@ import signal
 
 from catch import CatchEnv
 
+TRAINING_EPISODES = 2500
 
-# Adapted from https://pytorch.org/tutorials/intermediate/reinforcement_q_learning.html
+# For the general setup of the training the pytorch tutorial for the cart-pole game
+# was examined. https://pytorch.org/tutorials/intermediate/reinforcement_q_learning.html
 
-
-# Network from https://daiwk.github.io/assets/dqn.pdf
 class DQN(nn.Module):
+    """
+    Our Deep Q Network. Architecture adapted from:
+    @article{mnih2015human,
+        title={Human-level control through deep reinforcement learning},
+        author={Mnih, Volodymyr and Kavukcuoglu, Koray and Silver, David and  
+                Rusu, Andrei A and Veness, Joel and Bellemare, Marc G and  
+                Graves, Alex and Riedmiller, Martin and Fidjeland, 
+                Andreas K and Ostrovski, Georg and others},
+        journal={nature},
+        volume={518},
+        number={7540},
+        pages={529--533},
+        year={2015},
+        publisher={Nature Publishing Group}
+    }
+    """
 
     def __init__(self):
         super(DQN, self).__init__()
         self.layers = nn.Sequential(
-            nn.Conv2d(4, 32, kernel_size=8, stride=4),
+            nn.Conv2d(4, 64, kernel_size=8, stride=4),
             nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=4, stride=2),
+            nn.Conv2d(64, 64, kernel_size=4, stride=2),
             nn.ReLU(),
             nn.Conv2d(64, 64, kernel_size=3, stride=1),
             nn.ReLU(),
@@ -41,8 +63,13 @@ class DQN(nn.Module):
         return str(summary(self.layers, (4, 84, 84)))
 
 
-# Adapted from https://github.com/philtabor/Deep-Q-Learning-Paper-To-Code/blob/master/DQN/replay_memory.py
 class Buffer:
+    """
+    Replay memory buffer to store trajectories. The idea of using an array 
+    instead of deque was taken from:
+    https://github.com/philtabor/Deep-Q-Learning-Paper-To-Code/blob/master/DQN/replay_memory.py.
+    The approach was further adapted by storing all trajectories in only two arrays.
+    """
 
     def __init__(self, size, batch_size):
         self.size = size
@@ -79,21 +106,29 @@ class Buffer:
 
 
 class Trainer:
+    """
+    Our trainer: selects actions and keeps track of policy and target networks
+    """
 
     def __init__(self, 
                  batch_size=32,
                  gamma=0.99, 
                  lr=1e-4, 
-                 buffer_size=60000,
+                 buffer_size=TRAINING_EPISODES * 10, # just save everything
                  criterion=nn.SmoothL1Loss(),
-                 n_step_transfer = 1000
+                 n_step_transfer=1032,
+                 epsilon_start=1.0,
+                 epsilon_min=0.1,
+                 epsilon_subtract=1e-4,
                  ):
         self.batch_size = batch_size
-        self.epsilon = 1.0
+        self.epsilon = epsilon_start
         self.gamma = gamma
         self.lr = lr
         self.criterion = criterion
         self.n_step_transfer = n_step_transfer
+        self.epsilon_min = epsilon_min
+        self.epsilon_subtract = epsilon_subtract
         self.steps = 0
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -115,8 +150,8 @@ class Trainer:
         if use_own_policy:
             return self.use_policy(state)
 
-        if self.epsilon > 0.1:
-            self.epsilon -= 1e-4
+        if self.epsilon > self.epsilon_min:
+            self.epsilon -= self.epsilon_subtract
         if random.random() > self.epsilon:
             return self.use_policy(state)
         else:
@@ -151,7 +186,6 @@ class Trainer:
         loss = self.criterion(state_action_values, td_target)
         self.optimizer.zero_grad()
         loss.backward()
-        # torch.nn.utils.clip_grad_value_(self.policy_net.parameters(), 100)
         self.optimizer.step()
 
         if self.steps % self.n_step_transfer == 0:
@@ -164,9 +198,12 @@ class Trainer:
 
 
 AVG_TESTING_REWARDS = []
+TRAINING_LOSSES = []
 
-def save_data():
-    np.save("group_06_catch_rewards_" + str(time.time()), np.array(AVG_TESTING_REWARDS))
+def save_data(log=None):
+    log = log if log else str(int(time.time()))
+    np.save("group_06_catch_rewards_" + log, np.array(AVG_TESTING_REWARDS))
+    np.save("losses_" + log, np.array(TRAINING_LOSSES))
 
 def manual_early_stopping(sig, frame):
     print("Program stopped early")
@@ -176,11 +213,10 @@ def manual_early_stopping(sig, frame):
 
 signal.signal(signal.SIGINT, manual_early_stopping)
 
-def main():
 
-    training_episodes = 3000
-    assert training_episodes % 10 == 0
-    episodes = training_episodes * 2
+def main():
+    assert TRAINING_EPISODES % 10 == 0
+    episodes = TRAINING_EPISODES * 2
 
     env = CatchEnv()
     trainer = Trainer()
@@ -202,6 +238,7 @@ def main():
             if not validation:
                 trainer.save_trajectory((state, action, next_state, reward, terminate))
                 loss = trainer.train()
+                TRAINING_LOSSES.append(loss)
 
             state = next_state
 
@@ -216,9 +253,9 @@ def main():
                 AVG_TESTING_REWARDS.append(mean_reward)
                 testing_rewards = []
             validation = not validation
-            print("--------------------------------")
+            print("------------------------------------")
 
-        print("Episode:", e, ("Validation Reward: " + str(mean_reward) if not validation else ""))
+        print("Episode:", e, "/", episodes, ("Validation Reward: " + str(mean_reward) if not validation else ""))
 
     save_data()
 
