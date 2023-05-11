@@ -15,10 +15,11 @@ import numpy as np
 import time
 import sys
 import signal
+import os
 
 from catch import CatchEnv
 
-TRAINING_EPISODES = 2500
+TRAINING_EPISODES = 2000
 
 # For the general setup of the training the pytorch tutorial for the cart-pole game
 # was examined. https://pytorch.org/tutorials/intermediate/reinforcement_q_learning.html
@@ -114,7 +115,7 @@ class Trainer:
                  batch_size=32,
                  gamma=0.99, 
                  lr=1e-4, 
-                 buffer_size=TRAINING_EPISODES * 10, # just save everything
+                 buffer_size=60000, # just save everything
                  criterion=nn.SmoothL1Loss(),
                  n_step_transfer=1032,
                  epsilon_start=1.0,
@@ -196,14 +197,25 @@ class Trainer:
     def transfer_knowledge(self):
         self.target_net.load_state_dict(self.policy_net.state_dict())
 
+    def get_models(self):
+        return self.policy_net, self.target_net
+
 
 AVG_TESTING_REWARDS = []
 TRAINING_LOSSES = []
+N_STOP_EPISODES = 3
+EARLY_STOPPING = False
+trainer = Trainer()
 
-def save_data(log=None):
+def save_data(path="partA_results", log=None):
+    models = trainer.get_models()
     log = log if log else str(int(time.time()))
-    np.save("group_06_catch_rewards_" + log, np.array(AVG_TESTING_REWARDS))
-    np.save("losses_" + log, np.array(TRAINING_LOSSES))
+    path = os.path.join(path, log)
+    os.mkdir(path)
+    np.save(os.path.join(path, "group_06_catch_rewards_" + log), np.array(AVG_TESTING_REWARDS))
+    np.save(os.path.join(path, "losses_" + log), np.array(TRAINING_LOSSES))
+    torch.save(models[0], os.path.join(path, "policy_" + log))
+    torch.save(models[1], os.path.join(path, "target_" + log))
 
 def manual_early_stopping(sig, frame):
     print("Program stopped early")
@@ -219,7 +231,6 @@ def main():
     episodes = TRAINING_EPISODES * 2
 
     env = CatchEnv()
-    trainer = Trainer()
     validation = False
     testing_rewards = []
     mean_reward = None
@@ -251,6 +262,10 @@ def main():
             if validation:
                 mean_reward = np.mean(testing_rewards)
                 AVG_TESTING_REWARDS.append(mean_reward)
+                if EARLY_STOPPING and np.min(AVG_TESTING_REWARDS[-N_STOP_EPISODES:]) >= 0.9:
+                    print("Model converged in:", e / 2)
+                    save_data()
+                    break
                 testing_rewards = []
             validation = not validation
             print("------------------------------------")
