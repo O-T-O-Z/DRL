@@ -2,7 +2,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-rewards = "partA_results/5/group_06_catch_rewards_5.npy"
+rewards = "partA_results/1/group_06_catch_rewards_1.npy"
 
 arr = np.load(rewards, allow_pickle=True)
 plt.plot(arr)
