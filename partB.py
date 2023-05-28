@@ -6,7 +6,7 @@ from stable_baselines3.common.vec_env import VecFrameStack
 from stable_baselines3.common.env_util import make_vec_env
 
 
-STATUS = "play"
+STATUS = "eval"
 GAME_NAME = "Pitfall-v0"
 MODEL_NAME = GAME_NAME + "-a2c-10M"
 
