@@ -18,7 +18,7 @@ mean = data.mean(axis=0)
 x = np.arange(0, len(mean)) * 10
 
 plt.plot(x, mean)
-plt.fill_between(x, min_, max_, alpha = 0.3)
+plt.fill_between(x, min_, max_, alpha=0.3)
 plt.xlabel("Testing Episode")
 plt.ylabel("Average Reward")
 plt.title("Catch testing performance over 5 runs")

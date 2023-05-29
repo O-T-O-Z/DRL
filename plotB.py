@@ -17,7 +17,7 @@ with open(file, "r") as f:
 
 data = np.array(data)
 
-plt.plot(data[:,1] / 1000000, data[:,2])
+plt.plot(data[:, 1] / 1000000, data[:, 2])
 plt.xlabel("Timestep (in millions)")
 plt.ylabel("Average Reward")
 plt.title("Pitfall! training performance over 1 run")
@@ -40,16 +40,27 @@ with open(os.path.join(folder, eval_file), "r") as f:
 
 data_eval = pd.DataFrame({"A2C Model": data_eval[0], "Random": data_eval[1]})
 
-my_colors = {'A2C Model': 'blue', 'Random': 'skyblue'}
+my_colors = {"A2C Model": "blue", "Random": "skyblue"}
 ax = sns.boxplot(data=data_eval, palette=my_colors)
-
 
 
 plt.ylabel("Average Reward")
 
-plt.axhline(y=data_means[0], linestyle='--', color="green", label="A2C Model mean = " + str(data_means[0]), alpha=0.7)
-plt.axhline(y=data_means[1], linestyle='--', color="dodgerblue", label="Random mean = " + str(data_means[1]), alpha=0.7)
-plt.title('Pitfall! testing performance on 100 episodes')
+plt.axhline(
+    y=data_means[0],
+    linestyle="--",
+    color="green",
+    label="A2C Model mean = " + str(data_means[0]),
+    alpha=0.7,
+)
+plt.axhline(
+    y=data_means[1],
+    linestyle="--",
+    color="dodgerblue",
+    label="Random mean = " + str(data_means[1]),
+    alpha=0.7,
+)
+plt.title("Pitfall! testing performance on 100 episodes")
 plt.legend()
 plt.savefig(os.path.join(folder, "eval_pitfall.pdf"), bbox_inches="tight")
 plt.show()
