@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import os
 
 folder = "partB_results"
-file = os.path.join(folder,"10m_pitfall.csv")
+file = os.path.join(folder, "20m_pitfall.csv")
 
 data = []
 
@@ -14,7 +14,6 @@ with open(file, "r") as f:
         data.append(vals)
 
 data = np.array(data)
-
 
 plt.plot(data[:,1] / 1000000, data[:,2])
 plt.xlabel("Timestep (in millions)")
