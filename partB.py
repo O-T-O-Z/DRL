@@ -4,11 +4,12 @@ from stable_baselines3 import A2C
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import VecFrameStack
 from stable_baselines3.common.env_util import make_vec_env
+import numpy as np
 
 
 STATUS = "eval"
 GAME_NAME = "Pitfall-v0"
-MODEL_NAME = GAME_NAME + "-a2c-10M"
+MODEL_NAME = GAME_NAME + "-a2c-20M"
 
 
 def get_model():
@@ -22,7 +23,7 @@ def get_model():
 if __name__ == "__main__":
     if STATUS == "train":
         model, _ = get_model()
-        rewards_history = model.learn(total_timesteps=10000000)
+        rewards_history = model.learn(total_timesteps=20000000)
         model.save(MODEL_NAME)
 
     elif STATUS == "play":
@@ -33,7 +34,37 @@ if __name__ == "__main__":
         model, env = get_model()
         model = model.load(MODEL_NAME)
         observation = env.reset()
+        
+        all_rewards = [[] for i in range(4)]
+        game_means = []
+        game_lens = []
+
         while True:
-            action, _ = model.predict(observation)
+            if len(game_means) == 100:
+                break
+
+            #action, _ = model.predict(observation)
+            action = [env.action_space.sample() for x in range(4)]
+
             observation, reward, done, info = env.step(action)
+
+            for i, r in enumerate(reward):
+                all_rewards[i].append(r)
+
+            if done.any():
+                trues = np.where(done)[0]
+                for idx in trues:
+                    m = np.mean(all_rewards[idx])
+                    print(m)
+                    game_lens.append(len(all_rewards[idx]))
+                    all_rewards[idx] = []
+                    game_means.append(m)
+                print(len(game_means))
+
             env.render("human")
+
+        print(game_lens)
+        print(np.mean(game_lens))
+        print(game_means)
+        print(np.mean(game_means))
+
