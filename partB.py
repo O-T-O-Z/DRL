@@ -9,21 +9,14 @@ import gym
 from gym.utils.play import play
 from stable_baselines3 import A2C
 from stable_baselines3.common.env_util import make_vec_env
-from stable_baselines3.common.vec_env import VecFrameStack
-from stable_baselines3.common.env_util import make_vec_env
-import numpy as np
-from stable_baselines3.common.vec_env import (
-    DummyVecEnv,
-    VecEnv,
-    VecMonitor,
-    is_vecenv_wrapped,
-)
+from stable_baselines3.common.vec_env import VecFrameStack, VecMonitor, is_vecenv_wrapped
 from stable_baselines3.common.monitor import Monitor
+import numpy as np
 
 
 STATUS = "eval"
 GAME_NAME = "Pitfall-v0"
-MODEL_NAME = GAME_NAME + "-a2c-20M"
+MODEL_NAME = GAME_NAME + "-a2c-10M-adam"
 
 
 def get_model():
@@ -47,7 +40,7 @@ def get_model():
 if __name__ == "__main__":
     if STATUS == "train":
         model, _ = get_model()
-        rewards_history = model.learn(total_timesteps=20000000)
+        rewards_history = model.learn(total_timesteps=10000000)
         model.save(MODEL_NAME)
 
     elif STATUS == "play":
@@ -61,26 +54,27 @@ if __name__ == "__main__":
         random = False
 
         ## Code below has been adapted from https://github.com/DLR-RM/stable-baselines3/blob/master/stable_baselines3/common/evaluation.py#L11
+        # We copy the evaluation function because gym returns false done's.
+        # A player might still have a life but a done 1 is sent instead of 0
 
         episode_rewards = []
         episode_lengths = []
-        is_monitor_wrapped = (
-            is_vecenv_wrapped(env, VecMonitor) or env.env_is_wrapped(Monitor)[0]
-        )
+        is_monitor_wrapped = (is_vecenv_wrapped(env, VecMonitor) or env.env_is_wrapped(Monitor)[0])
         n_envs = 4
         n_eval_episodes = 100
 
         episode_counts = np.zeros(n_envs, dtype="int")
-        episode_count_targets = np.array(
-            [(n_eval_episodes + i) // n_envs for i in range(n_envs)], dtype="int"
-        )
+        episode_count_targets = np.array([(n_eval_episodes + i) // n_envs for i in range(n_envs)], dtype="int")
 
         current_rewards = np.zeros(n_envs)
         current_lengths = np.zeros(n_envs, dtype="int")
         observations = env.reset()
         states = None
         episode_starts = np.ones((env.num_envs,), dtype=bool)
+
         while (episode_counts < episode_count_targets).any():
+
+            # Added for our own testing against random player
             if not random:
                 actions, states = model.predict(
                     observations,
@@ -89,7 +83,7 @@ if __name__ == "__main__":
                     deterministic=False,
                 )
             else:
-                actions = [env.action_space.sample() for x in range(4)]
+                actions = [env.action_space.sample() for x in range(n_envs)]
 
             new_observations, rewards, dones, infos = env.step(actions)
             current_rewards += rewards
@@ -127,7 +121,12 @@ if __name__ == "__main__":
 
             env.render("human")
 
+        ## End of copying function
+
+        # Print results from evaluation
+
         mean_reward = np.mean(episode_rewards)
         std_reward = np.std(episode_rewards)
+
         print(episode_rewards)
         print(mean_reward)
