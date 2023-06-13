@@ -15,4 +15,4 @@ pip install -r requirements.txt
 * `plotX.py` contains the code for plotting the data for tasks A and B.
 * `partA.py` contains the code for training the *Catch* game-playing agent with the DQN algorithm.
 * `partB.py` contains the code for training the *Pitfall!* game-playing agent with the A2C algorithm.
-* `Pitfall-v0-a2c-10M.zip` & `Pitfall-v0-a2c-20M.zip` are the trained models on the *Pitfall!* game.
+* `Pitfall-v0-a2c-10M.zip` & `` are the trained models on the *Pitfall!* game.
